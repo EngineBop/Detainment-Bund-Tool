@@ -28,36 +28,185 @@ The tool:
 
 ---
 
-## Input Parameters (25 total)
-1. **Input Centreline Features** — polyline layer  
-2. **Centreline ID Field** — field identifying each bund  
-3. **Design Height Mode** — one of:  
-   - *Use Field*  
-   - *Use Start/End*  
-   - *Use HAG Field*  
-   - *Use HAG Value*  
-4. **Design Height Field** (if mode = Use Field)  
-5. **Start Crest Height** (if mode = Start/End)  
-6. **End Crest Height** (if mode = Start/End)  
-7. **HAG Field** (if mode = HAG Field)  
-8. **HAG Value** (if mode = HAG Value)  
-9. **Input DEM**  
-10. **Crest Width (m)**  
-11. **Maintain Crest Width (True/False)**  
-12. **Batter Slope H:V**  
-13. **End Taper Length (m)**  
-14. **Vertical Datum Label**  
-15. **Append Datum Label to Output Names**  
-16. **Topsoil Stripping Depth (m)**  
-17. **Output Workspace (File GDB)**  
-18. **Output Merged Design Surface Raster**  
-19. **Output Per-Feature Surfaces**  
-20. **Output Difference (Fill) Raster**  
-21. **Output 3D Multipatch Geometry**  
-22. **Create Bund Footprint Polygon Layer**  
-23. **Output CSV Summary**  
-24. **Treat Overlapping Centrelines as One Bund**  
-25. **Processing Mask Buffer Extra (m)**  
+### Input Parameters – Detailed Description
+
+**Input Centreline Features**  
+Polyline layer representing the centrelines of proposed detainment bunds / stopbanks.  
+Each feature is assumed to run along the crest of a single bund (or a logical section of bund).
+
+---
+
+**Centreline ID Field**  
+Text or numeric field used to uniquely identify each bund.  
+This ID is copied into outputs (footprints, volumes table, CSV) so you can trace results back to the original design line.
+
+---
+
+**Design Height Mode**  
+Controls how crest elevations are defined along each centreline. One of:
+
+- **Use Field** – a single absolute height (e.g. RL) taken from an attribute field for each feature.  
+- **Use Start/End** – linearly interpolated crest height from a start value to an end value along the line.  
+- **Use HAG Field** – height “above ground” stored in a field; tool adds this to the DEM.  
+- **Use HAG Value** – single constant height above existing ground used for all centrelines.
+
+Choose the mode that matches the design information you actually have.
+
+---
+
+**Design Height Field (m)**  
+Used only when **Design Height Mode = Use Field**.  
+Numeric field (e.g. `Level`, `DesignRL`) that stores the absolute crest elevation in metres for each centreline feature.
+
+---
+
+**Start Crest Height (m)**  
+Used only when **Design Height Mode = Use Start/End**.  
+Absolute crest height (metres) at the *start* of each centreline (line’s from-node).  
+The tool interpolates from this value to the End Crest Height along the line.
+
+---
+
+**End Crest Height (m)**  
+Used only when **Design Height Mode = Use Start/End**.  
+Absolute crest height (metres) at the *end* of each centreline (line’s to-node).  
+The tool creates a smooth longitudinal gradient between Start and End.
+
+---
+
+**HAG Field (m)**  
+Used only when **Design Height Mode = Use HAG Field**.  
+Numeric field containing **height above ground** (HAG) values per feature.  
+The tool samples the DEM under the centreline, then adds the HAG value to build the crest elevation.
+
+---
+
+**HAG Value (m)**  
+Used only when **Design Height Mode = Use HAG Value**.  
+Single constant height above existing ground applied to all centrelines (e.g. “build all crests 1.0 m above current ground”).  
+Useful for quick concept design or sensitivity testing.
+
+---
+
+**Input DEM**  
+Ground surface raster representing existing terrain (1 m LiDAR DEM recommended).  
+Must be in the same vertical datum as the design elevations. This surface is used both to build HAG-based crests and to compute fill depths.
+
+---
+
+**Crest Width (m)**  
+Flat width of the bund crest in metres (e.g. 3.0–5.0 m).  
+The tool uses this to define the core “flat” region around the centreline before batter slopes start.
+
+---
+
+**Maintain Crest Width (True/False)**  
+If **True**: forces the full crest width to be preserved even where the existing ground surface intersects the design plane.  
+- Inside the crest buffer, the crest elevation is enforced.  
+- Outside, the design is allowed to blend down to ground.  
+
+If **False**: the crest may be slightly eroded where DEM is higher than the theoretical batter.
+
+---
+
+**Batter Slope H:V**  
+Horizontal-to-vertical batter slope ratio (H per 1 V).  
+For example:
+- `3` → 3H:1V  
+- `2.5` → 2.5H:1V  
+
+This controls how quickly the bund drops from crest to toe.
+
+---
+
+**End Taper Length (m)**  
+Length over which the bund is tapered down to existing ground at each end.  
+- `0` → vertical “end wall” (no taper)  
+- `> 0` → smooth transition back to ground over the specified distance (e.g. 10–20 m).
+
+---
+
+**Vertical Datum Label**  
+Short text label describing the vertical datum of both DEM and design heights (e.g. `NZVD2016`, `Moturiki`).  
+Used for documentation and added into outputs (volume tables, footprints, multipatch).
+
+---
+
+**Append Datum Label to Output Names**  
+If **True**: appends `_<datum>` to output dataset names (e.g. `_BundSurface_moturiki`).  
+Helps avoid confusion when working with multiple datums or alternative surfaces.
+
+---
+
+**Topsoil Stripping Depth (m)**  
+Thickness of material (in metres) to be stripped before bund construction (e.g. 0.10–0.30 m).  
+The tool multiplies this depth by footprint area to calculate a separate **stripping volume** for costing.
+
+---
+
+**Output Workspace (File GDB)**  
+Target geodatabase where all outputs will be written (rasters, feature classes, tables).  
+Recommended: use a dedicated FGDB per scenario or design iteration.
+
+---
+
+**Output Merged Design Surface Raster**  
+If **True**: writes a single merged design surface raster for all processed centrelines.  
+Useful for viewing the full bund system as one continuous surface and for DEM–design comparisons.
+
+---
+
+**Output Per-Feature Surfaces**  
+If **True**: optionally writes per-feature design surfaces (one raster per centreline).  
+Useful for debugging or detailed per-bund analysis, but increases processing time and storage.
+
+---
+
+**Output Difference (Fill) Raster**  
+If **True**: writes a raster of **fill thickness** (design surface minus DEM).  
+Positive values indicate required fill; NoData or zero = no bund fill.
+
+---
+
+**Output 3D Multipatch Geometry**  
+If **True** and 3D Analyst is available: builds a 3D multipatch bund object by extruding between:
+- A TIN built from the DEM, and  
+- A TIN built from the design surface.  
+
+This is ideal for 3D visualisation, export to other 3D tools, or scene-based communication.
+
+---
+
+**Create Bund Footprint Polygon Layer**  
+If **True**: creates a polygon feature class representing the **bund toe footprint** (area where fill > 0).  
+Includes fields:
+- Centreline ID  
+- Area in hectares  
+- Vertical datum  
+
+---
+
+**Output CSV Summary**  
+If **True**: writes a summary table *and* CSV with:
+- One row per centreline  
+- A final `__TOTAL__` row with merged area and volumes  
+
+Contains fill area, fill volume, strip volume, geometry parameters, and datum information.
+
+---
+
+**Treat Overlapping Centrelines as One Bund**  
+If **True**: dissolves centrelines by the ID field and processes each dissolved line as a single bund.  
+Also saves a copy of merged centrelines as `<InputName>_Centrelines_MergedByID` in the output workspace.  
+Use this when you have segmented lines that logically represent one continuous bund.
+
+---
+
+**Processing Mask Buffer Extra (m)**  
+Extra distance added around each centreline when creating the local processing mask.  
+This ensures all batter slopes, tapers, and smoothing effects are safely contained within the mask.  
+Defaults to something like 20 m; increase for very wide batters or if you see clipping at the edges.
+
 
 ---
 
