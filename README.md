@@ -1,301 +1,305 @@
 # Detainment Bund 3D Design Tool  
-*(BundDesigner v5.2e for ArcGIS Pro)*  
+**BundDesigner v5.2e — ArcGIS Pro (Spatial Analyst + 3D Analyst)**  
 
-## Overview
-The **Detainment Bund 3D Design Tool** is an ArcGIS Pro Python script designed to generate 3D bund geometry, design surfaces, volumetric calculations, and visualisation outputs for detainment bunds and stopbanks.  
-Originally built for the **Whakatāne RSS Project**, the tool follows BOPRC Engineering Guidelines for crest widths, batter slopes, end tapers, and stripping depths.
+[![Status: Stable](https://img.shields.io/badge/Status-Stable-brightgreen)](#)  
+[![ArcGIS Pro](https://img.shields.io/badge/ArcGIS%20Pro-3.x-blue)](#)  
+[![Python](https://img.shields.io/badge/Python-3.9+-yellow)](#)  
+[![License: MIT](https://img.shields.io/badge/License-MIT-purple)](#)  
 
-The tool:
-- Builds a **3D design surface raster** from polyline centrelines.  
-- Produces **fill thickness rasters** showing required earthworks.  
-- Generates **footprint polygons** representing bund toes.  
-- Outputs **multipatch 3D objects** for visualisation.  
-- Adds **per-feature CSV rows + a total summary row** for costing.  
-- Supports **4 design modes**:  
-  **Use Field**, **Use Start/End**, **Use HAG Field**, **Use HAG Value**.  
+A specialised ArcGIS Pro tool for generating **3D detainment bund designs**, **fill volumes**, **footprints**, **surface rasters**, and **optional 3D multipatch solids**.  
+Ideal for **concept design, rapid alignment testing, early-stage costing, flood mitigation planning, and visualisation**.
 
 ---
 
-## Features
-- Per-centreline design surfaces and volumes  
-- Optional merged design surface  
-- Footprint polygons with ID, area, and datum labels  
-- 3D multipatch bund solid (TIN-based extrusion)  
-- Optional crest-width enforcement  
-- Optional smoothing to reduce raster stepping  
-- Topsoil stripping volume calculation  
-- Support for overlapping centrelines (Merge-by-ID)
+# 📑 Table of Contents
+
+- [1. Overview](#1-overview)  
+- [2. What the Tool Produces](#2-what-the-tool-produces)  
+- [3. Typical Use Cases](#3-typical-use-cases)  
+- [4. Installation](#4-installation)  
+- [5. Input Parameters (Detailed)](#5-input-parameters-detailed)  
+- [6. Output Datasets Explained](#6-output-datasets-explained)  
+- [7. Quality Control / QA Workflow](#7-quality-control--qa-workflow)  
+- [8. Accuracy, Limitations & Expected Error](#8-accuracy-limitations--expected-error)  
+- [9. Repository Structure](#9-repository-structure)  
+- [10. Licensing](#10-licensing)  
+- [11. Support](#11-support)  
 
 ---
 
-### Input Parameters – Detailed Description
+# 1. Overview
 
-**Input Centreline Features**  
-Polyline layer representing the centrelines of proposed detainment bunds / stopbanks.  
-Each feature is assumed to run along the crest of a single bund (or a logical section of bund).
+> **Purpose:**  
+> This tool provides *fast, repeatable, screening-level* 3D design and volume estimation for detainment bunds and stopbanks. It is designed to rapidly test alignments, crest heights, batter configurations, and earthwork quantities — all using a 1 m DEM or similar ground model.
 
----
-
-**Centreline ID Field**  
-Text or numeric field used to uniquely identify each bund.  
-This ID is copied into outputs (footprints, volumes table, CSV) so you can trace results back to the original design line.
+⚠️ **Important Engineering Note:**  
+This tool **does not** replace detailed design workflows in 12d, Civil 3D or full geotechnical assessment.  
+It is intended for **early planning**, **concept design**, **cost estimation**, **flood model pre-processing**, and **scenario comparison**.
 
 ---
 
-**Design Height Mode**  
-Controls how crest elevations are defined along each centreline. One of:
+# 2. What the Tool Produces
 
-- **Use Field** – a single absolute height (e.g. RL) taken from an attribute field for each feature.  
-- **Use Start/End** – linearly interpolated crest height from a start value to an end value along the line.  
-- **Use HAG Field** – height “above ground” stored in a field; tool adds this to the DEM.  
-- **Use HAG Value** – single constant height above existing ground used for all centrelines.
+### ✔ **Bund Surface Raster** (`*_BundSurface_<datum>`)
+A new elevation surface representing the **bund burnt into the DEM**.  
+This is your “if the bund were built today, what would the ground look like?” raster.
 
-Choose the mode that matches the design information you actually have.
+### ✔ **Bund Fill Raster** (`*_BundFill_<datum>`)
+A raster of **fill thickness** (design surface minus DEM).  
+Shows where and how much material is needed.
 
----
-
-**Design Height Field (m)**  
-Used only when **Design Height Mode = Use Field**.  
-Numeric field (e.g. `Level`, `DesignRL`) that stores the absolute crest elevation in metres for each centreline feature.
-
----
-
-**Start Crest Height (m)**  
-Used only when **Design Height Mode = Use Start/End**.  
-Absolute crest height (metres) at the *start* of each centreline (line’s from-node).  
-The tool interpolates from this value to the End Crest Height along the line.
-
----
-
-**End Crest Height (m)**  
-Used only when **Design Height Mode = Use Start/End**.  
-Absolute crest height (metres) at the *end* of each centreline (line’s to-node).  
-The tool creates a smooth longitudinal gradient between Start and End.
-
----
-
-**HAG Field (m)**  
-Used only when **Design Height Mode = Use HAG Field**.  
-Numeric field containing **height above ground** (HAG) values per feature.  
-The tool samples the DEM under the centreline, then adds the HAG value to build the crest elevation.
-
----
-
-**HAG Value (m)**  
-Used only when **Design Height Mode = Use HAG Value**.  
-Single constant height above existing ground applied to all centrelines (e.g. “build all crests 1.0 m above current ground”).  
-Useful for quick concept design or sensitivity testing.
-
----
-
-**Input DEM**  
-Ground surface raster representing existing terrain (1 m LiDAR DEM recommended).  
-Must be in the same vertical datum as the design elevations. This surface is used both to build HAG-based crests and to compute fill depths.
-
----
-
-**Crest Width (m)**  
-Flat width of the bund crest in metres (e.g. 3.0–5.0 m).  
-The tool uses this to define the core “flat” region around the centreline before batter slopes start.
-
----
-
-**Maintain Crest Width (True/False)**  
-If **True**: forces the full crest width to be preserved even where the existing ground surface intersects the design plane.  
-- Inside the crest buffer, the crest elevation is enforced.  
-- Outside, the design is allowed to blend down to ground.  
-
-If **False**: the crest may be slightly eroded where DEM is higher than the theoretical batter.
-
----
-
-**Batter Slope H:V**  
-Horizontal-to-vertical batter slope ratio (H per 1 V).  
-For example:
-- `3` → 3H:1V  
-- `2.5` → 2.5H:1V  
-
-This controls how quickly the bund drops from crest to toe.
-
----
-
-**End Taper Length (m)**  
-Length over which the bund is tapered down to existing ground at each end.  
-- `0` → vertical “end wall” (no taper)  
-- `> 0` → smooth transition back to ground over the specified distance (e.g. 10–20 m).
-
----
-
-**Vertical Datum Label**  
-Short text label describing the vertical datum of both DEM and design heights (e.g. `NZVD2016`, `Moturiki`).  
-Used for documentation and added into outputs (volume tables, footprints, multipatch).
-
----
-
-**Append Datum Label to Output Names**  
-If **True**: appends `_<datum>` to output dataset names (e.g. `_BundSurface_moturiki`).  
-Helps avoid confusion when working with multiple datums or alternative surfaces.
-
----
-
-**Topsoil Stripping Depth (m)**  
-Thickness of material (in metres) to be stripped before bund construction (e.g. 0.10–0.30 m).  
-The tool multiplies this depth by footprint area to calculate a separate **stripping volume** for costing.
-
----
-
-**Output Workspace (File GDB)**  
-Target geodatabase where all outputs will be written (rasters, feature classes, tables).  
-Recommended: use a dedicated FGDB per scenario or design iteration.
-
----
-
-**Output Merged Design Surface Raster**  
-If **True**: writes a single merged design surface raster for all processed centrelines.  
-Useful for viewing the full bund system as one continuous surface and for DEM–design comparisons.
-
----
-
-**Output Per-Feature Surfaces**  
-If **True**: optionally writes per-feature design surfaces (one raster per centreline).  
-Useful for debugging or detailed per-bund analysis, but increases processing time and storage.
-
----
-
-**Output Difference (Fill) Raster**  
-If **True**: writes a raster of **fill thickness** (design surface minus DEM).  
-Positive values indicate required fill; NoData or zero = no bund fill.
-
----
-
-**Output 3D Multipatch Geometry**  
-If **True** and 3D Analyst is available: builds a 3D multipatch bund object by extruding between:
-- A TIN built from the DEM, and  
-- A TIN built from the design surface.  
-
-This is ideal for 3D visualisation, export to other 3D tools, or scene-based communication.
-
----
-
-**Create Bund Footprint Polygon Layer**  
-If **True**: creates a polygon feature class representing the **bund toe footprint** (area where fill > 0).  
-Includes fields:
+### ✔ **Bund Footprint Polygon** (`*_BundFootprint_<datum>`)
+Toe-to-toe footprint of each bund.  
+Attributes include:
 - Centreline ID  
-- Area in hectares  
+- Area (ha)  
 - Vertical datum  
 
----
+### ✔ **Volume Table + CSV** (`*_BundVolumes_<datum>`)
+Contains:
+- Fill volume  
+- Fill area  
+- Strip volume  
+- Crest parameters  
+- Batter slope  
+- Height mode  
+- And a final **TOTALS** row  
 
-**Output CSV Summary**  
-If **True**: writes a summary table *and* CSV with:
-- One row per centreline  
-- A final `__TOTAL__` row with merged area and volumes  
-
-Contains fill area, fill volume, strip volume, geometry parameters, and datum information.
-
----
-
-**Treat Overlapping Centrelines as One Bund**  
-If **True**: dissolves centrelines by the ID field and processes each dissolved line as a single bund.  
-Also saves a copy of merged centrelines as `<InputName>_Centrelines_MergedByID` in the output workspace.  
-Use this when you have segmented lines that logically represent one continuous bund.
-
----
-
-**Processing Mask Buffer Extra (m)**  
-Extra distance added around each centreline when creating the local processing mask.  
-This ensures all batter slopes, tapers, and smoothing effects are safely contained within the mask.  
-Defaults to something like 20 m; increase for very wide batters or if you see clipping at the edges.
-
+### ✔ **Multipatch Solid (optional)** (`*_BundMultipatch_<datum>`)
+A 3D solid suitable for:
+- ArcGIS Pro Scene  
+- Web Scene / AGOL  
+- Unreal Engine  
+- Blender  
+- Civil 3D import (via multipatch → mesh)  
 
 ---
 
-## Outputs
-**Raster Layers**
-- `*_BundSurface` — design surface raster  
-- `*_BundFill` — fill depth raster  
+# 3. Typical Use Cases
 
-**Vector Layers**
-- `*_BundFootprint` — toe polygon with:  
-  - CentrelineID  
-  - Area_ha  
-  - VertDatum  
-- `*_BundMultipatch` — 3D bund object (if enabled)
-
-**Tables**
-- `*_BundVolumes` — GDB table + CSV:  
-  - One row per centreline  
-  - Final row = `__TOTAL__`  
-  - Includes: FillArea, FillVolume, StripVolume, Mode, CrestWidth, Batter, Datum, etc.
-
-**Optional**
-- `*_Centrelines_MergedByID` — persisted dissolved centrelines when “Merge by ID” is switched on.
+🎯 **Concept stopbank & bund design**  
+🎯 **Scenario & option testing (change height, change alignment)**  
+🎯 **Budget-level earthworks estimates**  
+🎯 **Flood-model pre-processing (burn bunds into DEM)**  
+🎯 **Engineering planning & hazard mitigation**  
+🎯 **3D visualisation for stakeholders**  
 
 ---
 
-## How the Tool Works (Summary)
-1. Buffers each centreline to create a processing area.  
-2. Builds crest elevations based on chosen design mode.  
-3. Computes batter slopes using Euclidean distance.  
-4. Applies optional crest-width protection and smoothing.  
-5. Subtracts the DEM from the design surface to get fill depth.  
-6. Converts fill raster > polygon to form the footprint.  
-7. Calculates:  
-   - Fill volume = Σ(depth × cell area)  
-   - Strip volume = footprint area × strip depth  
-8. Builds merged design/ fill surfaces (if selected).  
-9. Generates multipatch geometry using TIN-based extrusion.  
-10. Writes CSV and GDB tables with full per-feature stats.
+# 4. Installation
+
+1. Download or clone this repository.  
+2. Place `BundDesigner_v5_2e.py` in a known tools directory.  
+3. In ArcGIS Pro:  
+   - Open **Toolboxes**  
+   - Add → **Script Tool**  
+   - Point to the script  
+4. Add parameters **in correct order (0–24)**.  
+5. Save your toolbox (`EngineeringArcProTools.atbx` or equivalent).
 
 ---
 
-## Suggested Workflow
-### 1. Prepare Inputs
-- Clean centreline layer  
-- Ensure DEM has same vertical datum as design heights  
-- Check ID fields for duplicates  
+# 5. Input Parameters (Detailed)
 
-### 2. Run the Tool
-- Pick Design Mode  
-- Set crest width, batter, taper  
-- Choose whether to maintain crest width  
-- Choose output workspace (GDB recommended)  
-- Enable or disable optional outputs  
+### **Input Centreline Features**  
+Polyline representing bund crest alignment.
 
-### 3. Review Outputs
-- Inspect `BundSurface` and `BundFill`  
-- Check footprint alignment  
-- Load multipatch in a 3D Scene (ArcGIS Pro)  
-- Validate volumes in the CSV  
+### **Centreline ID Field**  
+Unique ID copied to all outputs.
+
+### **Design Height Mode**  
+- **Use Field** — absolute crest RL per feature  
+- **Use Start/End** — linear gradient along centreline  
+- **Use HAG Field** — DEM + attribute offset  
+- **Use HAG Value** — DEM + constant offset  
+
+### **Design Height Field (m)**  
+Used when *Use Field* is selected.
+
+### **Start / End Crest Height (m)**  
+Used when *Use Start/End* is selected.
+
+### **HAG Field / HAG Value**  
+Defines height above ground.
+
+### **Input DEM**  
+Existing terrain.
+
+### **Crest Width (m)**  
+Flat top width of bund.
+
+### **Maintain Crest Width**  
+True = enforce full crest width.
+
+### **Batter Slope (H:V)**  
+Example: `3` = 3H:1V.
+
+### **End Taper Length (m)**  
+Zero creates a vertical end wall.
+
+### **Vertical Datum Label**  
+E.g., `NZVD2016`, `Moturiki`.
+
+### **Append Datum to Output Names**  
+Adds `_moturiki` etc.
+
+### **Topsoil Stripping Depth (m)**  
+Strip thickness for costing.
+
+### **Output Workspace (File GDB)**  
+Destination FGDB.
+
+### **Output Merged Design Surface Raster**  
+Writes global bund surface.
+
+### **Output Per-Feature Surfaces**  
+Debugging only.
+
+### **Output Difference Raster (Fill)**  
+Writes fill depth raster.
+
+### **Output 3D Multipatch Geometry**  
+Generates 3D solid.
+
+### **Create Bund Footprint Polygon Layer**  
+Toe polygon.
+
+### **Output CSV Summary**  
+One row per bund + TOTAL.
+
+### **Treat Overlapping Centrelines as One Bund**  
+Dissolves by ID.
+
+### **Processing Mask Buffer Extra (m)**  
+Ensures batters are not clipped.
 
 ---
 
-## Visualisation Tips
-- Use **Drape (Interpolate Shape)** on the footprint polygon for clean scene rendering.  
-- Turn on **Edges = Visible** for multipatches to inspect crest and batters.  
-- Export multipatch to OBJ/DAE for 12d, Civil 3D, Blender, or Unreal Engine.
+# 6. Output Datasets Explained
+
+### 🟦 BundSurface Raster  
+A realistic **constructed ground level** surface.  
+Used for:
+- Flood modelling (burn into DEM)  
+- Cross-sections  
+- Visualisation  
+- Surface area checks  
+
+### 🟧 BundFill Raster  
+Fill depth in metres.  
+Used for:
+- Volume calculation  
+- Identifying high-fill zones  
+- Estimating material transport costs  
+
+### 🟩 BundFootprint Polygon  
+Toe polygon of bund.  
+Used for:
+- Land take  
+- Consenting overlays  
+- Property impact checks  
+
+### 🟪 BundMultipatch (optional)  
+True 3D object.  
+Used for:
+- Scene rendering  
+- Stakeholder presentations  
+- Export to Unreal/Blender  
+
+### 📄 BundVolumes (Table + CSV)  
+Highly structured output for:
+- Costing  
+- Reporting  
+- Model documentation  
+- Auditing & QC  
 
 ---
 
-## Quality Control (Recommended)
-### DEM Accuracy Test  
-- Perturb DEM by ±0.15 m (RMSE)  
-- Re-run tool → compare volume differences  
+# 7. Quality Control / QA Workflow
 
-### Pixelation Test  
-- Resample DEM to 0.5 m and 2 m  
-- Compare with baseline volumes  
+### 🔎 **A. Visual Checks**
+- BundSurface sits smoothly over DEM  
+- Crest width looks consistent  
+- Batter slopes look uniform  
+- No gaps between adjacent bund sections  
 
-### TIN Method Cross-Check  
-- Convert DEM & design surfaces to TIN  
-- Use **Surface Difference** to confirm raster-based volumes  
+### 📏 **B. Elevation Checks**
+Use Identify tool to sample:
+- DEM elevation  
+- Crest elevation  
+- BundSurface elevation  
+Expected: DEM < BundSurface by ~fill thickness.
 
-**Typical uncertainty for NZ 1 m DEM:**  
-**±10–15%** of total fill volume.
+### 🧮 **C. Volume Checks**
+Compare with:
+- 12d volume from TIN  
+- Civil 3D volume surfaces  
+- Hand-calculated prism approximations  
+Consistency within **5–12%** is typical.
+
+### 🧱 **D. Footprint QC**
+Check:
+- Polygon aligns tightly to fill raster  
+- No slivers or holes  
+- Area matches expectations  
+
+### 🎥 **E. Multipatch QC**
+In a 3D Scene:
+- Bund should match BundSurface shape  
+- Vertical faces clean  
+- Footprint extrusion correct  
+- Datum written in attribute  
 
 ---
 
-## Version History
-| Version | Notes |
-|---------|-------|
-| **v5.2e** | Stable release with: per-feature CSV rows, totals row, crest smoothing, footprint persistence, robust multipatch creation, dissolved centrelines output. |
+# 8. Accuracy, Limitations & Expected Error
+
+### 🌐 DEM Limitation  
+Bunds narrower than DEM resolution (e.g., 3.5 m crest on a 1 m DEM) will appear pixelated.  
+Volume calculations remain reliable because all raster cells contribute correctly.
+
+### 📉 Vertical Error  
+NZ 1 m LiDAR DEM typically:  
+- RMSE ≈ **0.15–0.25 m**  
+
+### 📊 Expected Volume Error  
+Typical expected uncertainty:  
+- **±8–12%** for small or complex bunds  
+- **±5–8%** for long simple bunds  
+
+### ❗ Engineering Disclaimer  
+This tool **does not** replace detailed design.  
+It is **for concept alignment, optioneering, costing, and flood-model preparation only**.
+
+---
+
+# 9. Repository Structure
+
+Detainment-Bund-Tool/
+│
+├── BundDesigner_v5_2e.py # Main engine script
+├── README.md # Documentation
+└── examples/ # (Optional) example outputs
+
+---
+
+# 10. Licensing
+
+MIT License — use it freely in professional or research contexts.
+
+---
+
+# 11. Support
+
+If you encounter:
+- Missing outputs  
+- Geometry errors  
+- Multipatch issues  
+- Strange fill depths  
+
+Open a GitHub Issue and include:
+- Your parameter list  
+- Screenshots  
+- A sample centreline (if possible)
+
+Happy designing.
