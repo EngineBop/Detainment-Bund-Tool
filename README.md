@@ -150,18 +150,3 @@ The tool:
 | Version | Notes |
 |---------|-------|
 | **v5.2e** | Stable release with: per-feature CSV rows, totals row, crest smoothing, footprint persistence, robust multipatch creation, dissolved centrelines output. |
-
----
-
-## Author
-**Dan Van Nistelrooy**  
-Bay of Plenty Regional Council  
-Engineering & GIS Development  
-2025
-
----
-
-## License
-Internal BOPRC use only.  
-Redistribution requires written approval.  
-© 2025 Bay of Plenty Regional Council.
